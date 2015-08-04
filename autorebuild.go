@@ -38,7 +38,7 @@ func RestartOnChange(srcPath string) {
 
 		logger.Printf("@(dim:Source change detected. Rebuilding...)\n")
 		ctx.Mkdirp(buildPath)
-		retCode, err := ctx.Quote("autorebuild/rsync", "rsync", "-a", srcPath, buildPath)
+		retCode, err := ctx.Quote("autorebuild/rsync", "rsync", "-a", path.Clean(srcPath)+"/", path.Clean(buildPath)+"/")
 		if retCode != 0 {
 			logger.Printf("rsync returned non-zero %d\n", retCode)
 			continue
