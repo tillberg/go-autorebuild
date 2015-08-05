@@ -1,24 +1,30 @@
 package autorebuild
 
 import (
+	"github.com/howeyc/fsnotify"
+	"github.com/tillberg/ansi-log"
 	"github.com/tillberg/bismuth"
 	"os"
 	"path"
+	"path/filepath"
 	"syscall"
 )
 
-func inotifyArgs() []string {
-	args := []string{
-		"inotifywait",
-		"--quiet",
-		"--recursive",
+func watchForChanges(watchRoot string) *fsnotify.Watcher {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Bail(err)
 	}
-	inotifyChangeEvents := []string{"modify", "attrib", "move", "create", "delete"}
-	for _, event := range inotifyChangeEvents {
-		args = append(args, "--event", event)
-	}
-	args = append(args, ".")
-	return args
+	go filepath.Walk(watchRoot, func(p string, info os.FileInfo, err error) error {
+		if filepath.Base(p) == ".git" {
+			return filepath.SkipDir
+		}
+		if info != nil && info.IsDir() {
+			watcher.Watch(p)
+		}
+		return nil
+	})
+	return watcher
 }
 
 func RestartOnChange(srcPath string) {
@@ -29,14 +35,24 @@ func RestartOnChange(srcPath string) {
 	ctx := bismuth.NewExecContext()
 	ctx.Connect()
 	logger := ctx.Logger()
+	watcher := watchForChanges(srcPath)
 	for {
 		ctx.Quote("autorebuild/cleanup", "rm", "-rf", buildPath)
 		ctx.Run("rmdir", autorebuildTemp) // Clean the directory up iff empty
 
 		logger.Printf("@(dim:Watching for changes...)\n")
-		ctx.RunCwd(ctx.AbsPath(srcPath), inotifyArgs()...)
+		select {
+		case ev := <-watcher.Event:
+			p, err := filepath.Rel(srcPath, ev.Name)
+			if err != nil {
+				p = ev.Name
+			}
+			logger.Printf("%s @(dim:changed. Rebuilding...)\n", p)
+		case err := <-watcher.Error:
+			log.Println("watcher error:", err)
+			continue
+		}
 
-		logger.Printf("@(dim:Source change detected. Rebuilding...)\n")
 		ctx.Mkdirp(buildPath)
 		retCode, err := ctx.Quote("autorebuild/rsync", "rsync", "-a", path.Clean(srcPath)+"/", path.Clean(buildPath)+"/")
 		if retCode != 0 {
