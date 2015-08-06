@@ -16,7 +16,8 @@ func watchForChanges(watchRoot string) *fsnotify.Watcher {
 		log.Bail(err)
 	}
 	go filepath.Walk(watchRoot, func(p string, info os.FileInfo, err error) error {
-		if filepath.Base(p) == ".git" {
+		base := filepath.Base(p)
+		if base == ".git" || base == "node_modules" {
 			return filepath.SkipDir
 		}
 		if info != nil && info.IsDir() {
