@@ -28,6 +28,8 @@ func watchForChanges(watchRoot string) *fsnotify.Watcher {
 	return watcher
 }
 
+const logPrefix = "@(dim:[autorebuild]) "
+
 func RestartOnChange(srcPath string) {
 	exeName := path.Base(os.Args[0])
 	autorebuildTemp := path.Join(os.TempDir(), "go-autorebuild")
@@ -35,50 +37,49 @@ func RestartOnChange(srcPath string) {
 	exePath := path.Join(buildPath, exeName)
 	ctx := bismuth.NewExecContext()
 	ctx.Connect()
-	logger := ctx.Logger()
 	watcher := watchForChanges(srcPath)
 	for {
 		ctx.Quote("autorebuild/cleanup", "rm", "-rf", buildPath)
 		ctx.Run("rmdir", autorebuildTemp) // Clean the directory up iff empty
 
-		logger.Printf("@(dim:Watching for changes...)\n")
 		select {
 		case ev := <-watcher.Event:
 			p, err := filepath.Rel(srcPath, ev.Name)
 			if err != nil {
 				p = ev.Name
 			}
-			logger.Printf("%s @(dim:changed. Rebuilding...)\n", p)
+			log.Printf(logPrefix+"%s @(dim:changed. Rebuilding...)\n", p)
 		case err := <-watcher.Error:
-			log.Println("watcher error:", err)
+			log.Printf(logPrefix+"watcher error: %s\n", err)
 			continue
 		}
 
 		ctx.Mkdirp(buildPath)
 		retCode, err := ctx.Quote("autorebuild/rsync", "rsync", "-a", path.Clean(srcPath)+"/", path.Clean(buildPath)+"/")
 		if retCode != 0 {
-			logger.Printf("rsync returned non-zero %d\n", retCode)
+			log.Printf(logPrefix+"rsync returned non-zero %d\n", retCode)
 			continue
 		}
 		if err != nil {
-			logger.Printf("rsync errored: %v\n", err)
+			log.Printf(logPrefix+"rsync errored: %v\n", err)
 			continue
 		}
 		retCode, err = ctx.QuoteCwd("autorebuild/go-build", buildPath, "/home/ubuntu/go/bin/go", "build")
 		if retCode != 0 {
-			logger.Printf("@(red:Build failed.)\n")
+			log.Printf(logPrefix + "@(red:Build failed.)\n")
 			continue
 		}
 		if err != nil {
-			logger.Printf("go-build errored: %v\n", err)
+			log.Printf(logPrefix+"go-build errored: %v\n", err)
 			continue
 		}
 		fileInfo, err := os.Stat(exePath)
 		if err != nil {
-			logger.Printf("stat errored: %v\n", err)
+			log.Printf(logPrefix+"stat errored: %v\n", err)
 			continue
 		}
-		logger.Printf("@(green:Build successful, %dkb. Restarting with new build.)\n", fileInfo.Size()/1024)
+		log.Printf(logPrefix+"@(green:Build successful, %dkb. Restarting with new build.)\n", fileInfo.Size()/1024)
+		log.Printf(logPrefix + "Restarting...\n")
 		syscall.Exec(exePath, os.Args, os.Environ())
 	}
 }
