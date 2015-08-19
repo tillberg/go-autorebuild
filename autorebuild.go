@@ -78,8 +78,7 @@ func RestartOnChange(srcPath string) {
 			log.Printf(logPrefix+"stat errored: %v\n", err)
 			continue
 		}
-		log.Printf(logPrefix+"@(green:Build successful, %dkb. Restarting with new build.)\n", fileInfo.Size()/1024)
-		log.Printf(logPrefix + "Restarting...\n")
+		log.Printf(logPrefix+"@(green:%s build successful, %dkb. Restarting...)\n", exeName, fileInfo.Size()/1024)
 		syscall.Exec(exePath, os.Args, os.Environ())
 	}
 }
