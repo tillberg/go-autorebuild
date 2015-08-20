@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 func CleanUpZombieChildren() {
@@ -38,7 +39,13 @@ func CleanUpZombieChildren() {
 			pid := int(pid64)
 			if pid != cmd.Process.Pid {
 				log.Printf("@(dim:Cleaning up zombie child) %d@(dim:.)\n", pid)
-				syscall.Kill(pid, syscall.SIGINT)
+				go func() {
+					syscall.Kill(pid, syscall.SIGHUP)
+					time.Sleep(60 * time.Second)
+					syscall.Kill(pid, syscall.SIGINT)
+					time.Sleep(20 * time.Second)
+					syscall.Kill(pid, syscall.SIGTERM)
+				}()
 				ws := syscall.WaitStatus(0)
 				syscall.Wait4(pid, &ws, 0, nil)
 			}
